@@ -189,6 +189,21 @@ docker build --output type=local,dest=dist .
 
 ## 历史决策与根因记录
 
+### v0.10.1 OAuth 资源路由安全修复部署（2026-10-03）
+
+- GitHub Release `v0.10.1` 对应提交 `745cbc095b86f0088baa014de108c73cc48fc3cc`，
+  发布工作流成功，公开 amd64 ZIP 的 SHA256 与 `checksums.txt` 一致。
+- 同一标签源码在 `ai.venja.cc` 原生 ARM64 构建，`go vet ./...`、`go test ./...`
+  和插件编译通过；2026-10-03 12:59 UTC 更新并重启 CPA。
+- 部署插件 SHA256：`38f5750531f206150d64ee33aa6dcd3710aa4eff16bb9911f181af3f3110c8cd`。
+  旧版备份：`/root/CLIProxyAPI/plugins/cpa-provider-nexus-v0.10.0.so.bak-oauth-fix-20261003`。
+- 启动日志确认 Nexus v0.10.1 和 key-policy v0.5.1 注册成功；更新前后管理接口的
+  8 条凭据身份一致，控制台和模型列表均返回 200。
+- 旧公开 OAuth 路径返回 404 且无跳转；匿名管理回调被拒绝，带管理鉴权的
+  合成未知 state 请求返回预期的 400。
+- `nexus/auto` 实际推理检查返回 400：`Kiro token refresh failed: Invalid request`。
+  尚未确认 Kiro 推理可用，需要检查账号授权状态；不能将路由健康等同于推理成功。
+
 ### v0.10.0 WorkBuddy 接入审查（2026-09-28）
 
 - 已部署到 `ai.venja.cc` 的 ARM64 CPA（2026-09-28 22:54 UTC）。amd64/arm64
