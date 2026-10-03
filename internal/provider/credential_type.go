@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/ViceEye/cpa-provider-nexus/internal/cline"
+	"github.com/ViceEye/cpa-provider-nexus/internal/workbuddy"
 )
 
 // credentialTypeMarker peeks the "type" discriminator from a StorageJSON /
@@ -22,6 +23,9 @@ func credentialTypeMarker(raw []byte) string {
 	}
 	if probe.Kind == cline.TypeMarker {
 		return cline.TypeMarker
+	}
+	if probe.Kind == workbuddy.TypeMarker || probe.Kind == workbuddy.TypeMarkerCN || probe.Kind == workbuddy.TypeMarkerIntl {
+		return workbuddy.TypeMarker
 	}
 	return probe.Type
 }

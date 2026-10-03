@@ -10,6 +10,7 @@ import (
 
 	"github.com/ViceEye/cpa-provider-nexus/internal/cline"
 	"github.com/ViceEye/cpa-provider-nexus/internal/jsonx"
+	"github.com/ViceEye/cpa-provider-nexus/internal/workbuddy"
 )
 
 type quotaAccount struct {
@@ -263,6 +264,11 @@ func credentialAuthID(entry hostAuthFileEntry) string {
 			return stable
 		}
 	}
+	if credentialTypeMarker(auth.JSON) == workbuddy.TypeMarker {
+		if stable := workbuddy.StableCredentialID(auth.JSON); stable != "" {
+			return stable
+		}
+	}
 	cred, errCred := decodeCredential(auth.JSON)
 	if errCred != nil {
 		return ""
@@ -315,7 +321,8 @@ func loadKiroQuotas(callbackID string) ([]quotaAccount, error) {
 	for _, entry := range list.Files {
 		isNexus := strings.EqualFold(entry.Provider, providerID) || strings.EqualFold(entry.Type, providerID)
 		isCline := strings.EqualFold(entry.Provider, cline.TypeMarker) || strings.EqualFold(entry.Type, cline.TypeMarker)
-		if entry.Disabled || (!isNexus && !isCline) {
+		isWorkBuddy := strings.EqualFold(entry.Provider, workbuddy.TypeMarker) || strings.EqualFold(entry.Type, workbuddy.TypeMarker)
+		if entry.Disabled || (!isNexus && !isCline && !isWorkBuddy) {
 			continue
 		}
 		account := quotaAccount{AuthIndex: entry.AuthIndex, Name: entry.Name, Label: entry.Label, Status: "error"}
@@ -347,6 +354,30 @@ func loadKiroQuotas(callbackID string) ([]quotaAccount, error) {
 				account.ModelQuotas = clineModelQuotas(storageJSON)
 			} else {
 				account.Error = "cline quota returned no account"
+			}
+			accounts = append(accounts, account)
+			continue
+		}
+		if storageJSON, typeMarker := credentialStorageJSONByIndex(callbackID, entry.AuthIndex); typeMarker == workbuddy.TypeMarker {
+			raw := mustJSON(map[string]any{
+				"Body":           mustJSON(map[string]any{"StorageJSON": []byte(storageJSON), "name": entry.Name, "auth_index": entry.AuthIndex, "host_callback_id": callbackID}),
+				"HostCallbackID": callbackID,
+			})
+			wbRaw, errUsage := workbuddy.Usage(raw)
+			if errUsage != nil {
+				account.Error = errUsage.Error()
+				accounts = append(accounts, account)
+				continue
+			}
+			wbAccounts, errWb := parseClineUsageEnvelope(wbRaw)
+			if errWb != nil {
+				account.Error = errWb.Error()
+			} else if len(wbAccounts) == 1 {
+				account = wbAccounts[0]
+				account.AuthIndex = entry.AuthIndex
+				account.Name = entry.Name
+			} else {
+				account.Error = "workbuddy quota returned no account"
 			}
 			accounts = append(accounts, account)
 			continue

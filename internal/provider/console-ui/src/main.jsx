@@ -47,6 +47,7 @@ const TYPE_COLORS = {
   grok: { bg: '#f3f4f6', text: '#111827', border: '1px solid #d1d5db' },
   vertex: { bg: '#e4edfd', text: '#2b5fbc' },
   kiro: { bg: '#eee7ff', text: '#6a4bd4' },
+  workbuddy: { bg: '#e0edff', text: '#006eff' },
   unknown: { bg: '#f0f0f0', text: '#666666', border: '1px dashed #999999' },
 };
 
@@ -1260,6 +1261,7 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
   const statusWarning = hasAuthFileStatusWarning(file);
   const isKiro = providerKey === 'kiro';
   const isCline = providerKey === 'cline';
+  const isWorkBuddy = providerKey === 'workbuddy';
   const isAntigravity = providerKey === 'antigravity';
   const isCodex = providerKey === 'codex';
   const avatarStyle = { backgroundColor: color.bg, color: color.text, ...(color.border ? { border: color.border } : {}) };
@@ -1327,7 +1329,7 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
   }, [file, isAntigravity, mgmtKey]);
 
   const refreshQuota = useCallback(async () => {
-    if (!isKiro && !isCline) return;
+    if (!isKiro && !isCline && !isWorkBuddy) return;
     setQuotaLoading(true);
     setQuotaOpen(true);
     try {
@@ -1339,7 +1341,7 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
       setQuota(
         match ||
           {
-            error: isKiro
+            error: isKiro || isWorkBuddy
               ? '未返回该凭证的额度'
               : '未返回该凭证的 Cline 免费状态',
           }
@@ -1349,7 +1351,7 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
     } finally {
       setQuotaLoading(false);
     }
-  }, [mgmtKey, file.auth_index, file.name, isCline, isKiro]);
+  }, [mgmtKey, file.auth_index, file.name, isCline, isKiro, isWorkBuddy]);
 
   const showModels = useCallback(async () => {
     setModelsLoading(true);
@@ -1411,10 +1413,10 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
   // card's quota at once (Kiro/Cline -> management quota, Codex/Antigravity -> live usage).
   useEffect(() => {
     if (!refreshAll) return;
-    if ((isKiro || isCline) && file.auth_index) refreshQuota();
+    if ((isKiro || isCline || isWorkBuddy) && file.auth_index) refreshQuota();
     else if (isAntigravity && file.auth_index) refreshAntigravity();
     else if (isCodex && file.auth_index) refreshCodex();
-  }, [file.auth_index, isAntigravity, isCline, isCodex, isKiro, refreshAll, refreshAntigravity, refreshCodex, refreshQuota]);
+  }, [file.auth_index, isAntigravity, isCline, isCodex, isKiro, isWorkBuddy, refreshAll, refreshAntigravity, refreshCodex, refreshQuota]);
 
   const startRelogin = useCallback(async () => {
     if (!file.auth_index) {
@@ -1551,7 +1553,7 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
         )}
       </div>
 
-      {isKiro ? (
+      {isKiro || isWorkBuddy ? (
         quota && !quota.error ? (
           <QuotaSection account={quota} brandIcon={icon} />
         ) : (
@@ -1628,7 +1630,7 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
           )}
           <button
             className="btn iconButton"
-            onClick={isKiro || isCline ? refreshQuota : isAntigravity ? refreshAntigravity : isCodex ? refreshCodex : onChanged}
+            onClick={isKiro || isCline || isWorkBuddy ? refreshQuota : isAntigravity ? refreshAntigravity : isCodex ? refreshCodex : onChanged}
             title="刷新额度"
             disabled={quotaLoading || codexLoading || antigravityLoading}
           ><RefreshIcon /></button>
@@ -2180,6 +2182,20 @@ const OAUTH_PROVIDERS = {
     icon: clineIcon,
     className: 'oauthProviderCline',
   },
+  'workbuddy-cn': {
+    label: 'WorkBuddy CN',
+    title: 'WorkBuddy 国内版',
+    description: '腾讯云 CodeBuddy 扫码授权',
+    icon: '',
+    className: 'oauthProviderWorkbuddy',
+  },
+  'workbuddy-intl': {
+    label: 'WorkBuddy Intl',
+    title: 'WorkBuddy 国际版',
+    description: 'CodeBuddy.ai 国际版授权',
+    icon: '',
+    className: 'oauthProviderWorkbuddy',
+  },
 };
 
 function OAuthBrandIcon({ provider, size = 22 }) {
@@ -2192,7 +2208,7 @@ function OAuthBrandIcon({ provider, size = 22 }) {
     : undefined;
   return (
     <span className={`oauthBrandIcon ${item.className} ${useCardStyle ? 'oauthBrandIconCard' : ''}`} style={cardStyle}>
-      {failed ? (
+      {failed || !item.icon ? (
         <span className="oauthBrandFallback">{item.label.slice(0, 1)}</span>
       ) : (
         <img src={item.icon} alt="" width={size} height={size} onError={() => setFailed(true)} />
@@ -2291,6 +2307,7 @@ function OAuthPanel({ provider, mgmtKey, onChanged, onBack }) {
 
   const providerInfo = OAUTH_PROVIDERS[provider];
   const isCline = provider === 'cline';
+  const isWorkBuddy = provider === 'workbuddy-cn' || provider === 'workbuddy-intl';
 
   // Step 1: ask the plugin for the provider sign-in URL + state.
   const startLogin = useCallback(async () => {
@@ -2300,7 +2317,7 @@ function OAuthPanel({ provider, mgmtKey, onChanged, onBack }) {
     try {
       const started = await request('/console/oauth/start', mgmtKey, {
         method: 'POST',
-        body: JSON.stringify(isCline ? { login_mode: 'cline' } : {}),
+        body: JSON.stringify(isCline ? { login_mode: 'cline' } : isWorkBuddy ? { login_mode: provider } : {}),
       });
       if (!started.url || !started.state) throw Error('登录启动失败');
       const cleanURL = cleanOAuthURL(started.url);
@@ -2320,7 +2337,7 @@ function OAuthPanel({ provider, mgmtKey, onChanged, onBack }) {
       setStatus(`失败：${e.message}`);
       setBusy(false);
     }
-  }, [isCline, mgmtKey, poll, providerInfo.label]);
+  }, [isCline, isWorkBuddy, provider, mgmtKey, poll, providerInfo.label]);
 
   // Step 2: submit the pasted localhost callback URL. Org logins return a
   // device verification URL to open; personal logins carry the code directly.
@@ -2584,6 +2601,7 @@ function App() {
           {[
             ['all', '全部'],
             ['kiro', 'Kiro'],
+            ['workbuddy', 'WorkBuddy'],
             ['codex', 'Codex'],
             ['antigravity', 'Antigravity'],
             ['disabled', '已停用'],

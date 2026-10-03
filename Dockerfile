@@ -1,4 +1,5 @@
 FROM golang:1.26.7-bookworm AS builder
+ARG TARGETARCH
 
 WORKDIR /src
 COPY go.mod go.sum ./
@@ -8,14 +9,14 @@ COPY . .
 RUN /usr/local/go/bin/gofmt -w cmd/cpa-provider-nexus/*.go internal/*/*.go \
     && /usr/local/go/bin/go vet ./... \
     && /usr/local/go/bin/go test ./... \
-    && mkdir -p /out/linux/amd64 \
-    && CGO_ENABLED=1 GOOS=linux GOARCH=amd64 /usr/local/go/bin/go build \
+    && mkdir -p /out/linux/${TARGETARCH} \
+    && CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} /usr/local/go/bin/go build \
        -buildvcs=false -trimpath -buildmode=c-shared \
        -ldflags="-s -w" \
-       -o /out/linux/amd64/cpa-provider-nexus-v0.9.5.so ./cmd/cpa-provider-nexus \
-    && rm -f /out/linux/amd64/*.h \
-    && cd /out/linux/amd64 \
-    && sha256sum cpa-provider-nexus-v0.9.5.so > cpa-provider-nexus-v0.9.5.so.sha256
+       -o /out/linux/${TARGETARCH}/cpa-provider-nexus-v0.10.0.so ./cmd/cpa-provider-nexus \
+    && rm -f /out/linux/${TARGETARCH}/*.h \
+    && cd /out/linux/${TARGETARCH} \
+    && sha256sum cpa-provider-nexus-v0.10.0.so > cpa-provider-nexus-v0.10.0.so.sha256
 
 FROM scratch
 COPY --from=builder /out/ /

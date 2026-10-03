@@ -80,6 +80,10 @@ func recordRequest(authID string, success bool) {
 	}
 }
 
+func recordWorkBuddyRequest(authID, model string, success bool, message string) {
+	recordRequest(authID, success)
+}
+
 // recordClineRequest records the outcome of a real Cline model request. It
 // deliberately ignores balance/management calls: those endpoints do not tell
 // us whether a free inference window is available.

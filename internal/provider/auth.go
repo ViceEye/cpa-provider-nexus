@@ -10,6 +10,7 @@ import (
 
 	"github.com/ViceEye/cpa-provider-nexus/internal/cline"
 	"github.com/ViceEye/cpa-provider-nexus/internal/jsonx"
+	"github.com/ViceEye/cpa-provider-nexus/internal/workbuddy"
 )
 
 func parseAuth(raw []byte) ([]byte, error) {
@@ -19,6 +20,9 @@ func parseAuth(raw []byte) ([]byte, error) {
 	}
 	if credentialTypeMarker(req.RawJSON) == cline.TypeMarker {
 		return cline.ParseAuth(raw)
+	}
+	if credentialTypeMarker(req.RawJSON) == workbuddy.TypeMarker {
+		return workbuddy.ParseAuth(raw)
 	}
 	if req.Provider != "" && !strings.EqualFold(req.Provider, providerID) {
 		return okEnvelope(authParseResponse{Handled: false})
@@ -74,6 +78,9 @@ func refreshAuth(raw []byte) ([]byte, error) {
 	}
 	if credentialTypeMarker(req.StorageJSON) == cline.TypeMarker {
 		return cline.RefreshAuth(raw)
+	}
+	if credentialTypeMarker(req.StorageJSON) == workbuddy.TypeMarker {
+		return workbuddy.RefreshAuth(raw)
 	}
 	cred, errDecode := decodeCredential(req.StorageJSON)
 	if errDecode != nil {

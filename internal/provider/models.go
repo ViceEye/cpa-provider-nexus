@@ -8,6 +8,7 @@ import (
 
 	"github.com/ViceEye/cpa-provider-nexus/internal/chat"
 	"github.com/ViceEye/cpa-provider-nexus/internal/cline"
+	"github.com/ViceEye/cpa-provider-nexus/internal/workbuddy"
 )
 
 var fallbackModels = []string{
@@ -138,6 +139,9 @@ func modelsForAuth(raw []byte) ([]byte, error) {
 	}
 	if credentialTypeMarker(req.StorageJSON) == cline.TypeMarker {
 		return cline.ModelsForAuth(raw)
+	}
+	if credentialTypeMarker(req.StorageJSON) == workbuddy.TypeMarker {
+		return workbuddy.ModelsForAuth(raw)
 	}
 	cred, errCred := decodeCredential(req.StorageJSON)
 	if errCred != nil {

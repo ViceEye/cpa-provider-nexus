@@ -17,6 +17,7 @@ import (
 
 	"github.com/ViceEye/cpa-provider-nexus/internal/cline"
 	"github.com/ViceEye/cpa-provider-nexus/internal/jsonx"
+	"github.com/ViceEye/cpa-provider-nexus/internal/workbuddy"
 )
 
 var deviceLoginPolls = struct {
@@ -75,6 +76,9 @@ func startLoginInternal(raw []byte, req authLoginStartRequest) ([]byte, error) {
 		mode := strings.ToLower(strings.TrimSpace(jsonx.String(req.Metadata, "login_mode")))
 		if mode == cline.TypeMarker || req.Provider == cline.TypeMarker {
 			return cline.LoginStart(raw)
+		}
+		if mode == workbuddy.TypeMarker || mode == workbuddy.TypeMarkerCN || mode == workbuddy.TypeMarkerIntl || req.Provider == workbuddy.TypeMarker {
+			return workbuddy.LoginStart(raw)
 		}
 		if mode == "kiro-browser" || mode == "aws-device" {
 			config := loadedConfig()
@@ -140,6 +144,9 @@ func pollLogin(raw []byte) ([]byte, error) {
 	mode := strings.ToLower(strings.TrimSpace(jsonx.String(req.Metadata, "login_mode")))
 	if mode == cline.TypeMarker || req.Provider == cline.TypeMarker {
 		return cline.LoginPoll(raw)
+	}
+	if mode == workbuddy.TypeMarker || mode == workbuddy.TypeMarkerCN || mode == workbuddy.TypeMarkerIntl || req.Provider == workbuddy.TypeMarker {
+		return workbuddy.LoginPoll(raw)
 	}
 	if mode == "aws-device" || (mode == "" && jsonx.String(req.Metadata, "device_code") != "") {
 		return pollDeviceLoginRequest(req)

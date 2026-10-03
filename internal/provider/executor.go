@@ -10,6 +10,7 @@ import (
 	"github.com/ViceEye/cpa-provider-nexus/internal/cline"
 	"github.com/ViceEye/cpa-provider-nexus/internal/eventstream"
 	"github.com/ViceEye/cpa-provider-nexus/internal/jsonx"
+	"github.com/ViceEye/cpa-provider-nexus/internal/workbuddy"
 )
 
 type completionAccumulator struct {
@@ -24,6 +25,7 @@ type completionAccumulator struct {
 
 func init() {
 	cline.SetRequestObserver(recordClineRequest)
+	workbuddy.SetRequestObserver(recordWorkBuddyRequest)
 }
 
 func executeRequest(raw []byte) ([]byte, error) {
@@ -33,6 +35,9 @@ func executeRequest(raw []byte) ([]byte, error) {
 	}
 	if credentialTypeMarker(req.StorageJSON) == cline.TypeMarker {
 		return cline.Execute(raw)
+	}
+	if credentialTypeMarker(req.StorageJSON) == workbuddy.TypeMarker {
+		return workbuddy.Execute(raw)
 	}
 	payload, cred, model, response, errExecute := executeKiroNonStream(req)
 	_ = payload
@@ -117,6 +122,9 @@ func executeStream(raw []byte) ([]byte, error) {
 	}
 	if credentialTypeMarker(req.StorageJSON) == cline.TypeMarker {
 		return cline.ExecuteStream(raw)
+	}
+	if credentialTypeMarker(req.StorageJSON) == workbuddy.TypeMarker {
+		return workbuddy.ExecuteStream(raw)
 	}
 	if strings.TrimSpace(req.StreamID) == "" {
 		return errorEnvelope("executor_error", "stream_id is required", false, http.StatusInternalServerError), nil

@@ -40,7 +40,7 @@
 
 ## 运行时与插件 ABI
 
-- 插件是 Linux amd64 glibc 的 `c-shared` `.so`，由 CPA 宿主加载。
+- 插件是 Linux amd64/arm64 glibc 的 `c-shared` `.so`，必须匹配 CPA 容器架构，由宿主加载。
 - C ABI：宿主通过 `cliproxy_plugin_init` 传入函数表，插件用
   `cliproxyPluginCall` 以 JSON 信封 `{ok, result, error}` 双向 RPC。
 - 所有上游 HTTP 必须走宿主桥（`host.http.do` / `host.http.do_stream`），
@@ -182,6 +182,30 @@ docker build --output type=local,dest=dist .
 服务器部署与 Git 推送分开执行；未明确要求时不要自动更新服务器。
 
 ## 历史决策与根因记录
+
+### v0.10.0 WorkBuddy 接入审查（2026-09-28）
+
+- 已部署到 `ai.venja.cc` 的 ARM64 CPA（2026-09-28 22:54 UTC）。amd64/arm64
+  构建均通过 `go vet ./...`、`go test ./...`；WorkBuddy 另通过 race 测试。
+  启动日志确认 Nexus v0.10.0 与 key-policy v0.5.1 均注册成功，管理接口的
+  6 条认证身份未变，控制台和模型列表返回 200，国内/国际 OAuth start 均成功。
+  尚无 WorkBuddy 账号，未验证实际授权完成、配额及推理。
+- 旧插件备份为
+  `/root/CLIProxyAPI/plugins/cpa-provider-nexus-v0.9.5.so.bak-workbuddy-20260928`；
+  已部署 ARM64 成品 SHA256：
+  `a1bc3969ba516f736619dc9b873dd568823d7fe0c24e83af32f13a276a6f0fac`。
+- `internal/workbuddy` 通过宿主 HTTP 桥实现国内/国际网关，凭据固定为
+  `type: nexus, kind: workbuddy`，`region` 为 `cn` 或 `intl`。
+- 请求前与 401/403 后刷新必须写回请求的物理文件名，不能按新 token 重新计算文件名；
+  额度查询传递原始 `name`。刷新还必须保留 `disabled/priority/note` 等未知字段。
+- 非流式聚合不接受空响应、非 SSE JSON、错误事件或缺少完成标记的截断响应；
+  工具索引可不连续。流式桥的 `error` 字段必须显式上抛。
+- 当前沿用 9router 的网关提示词兼容逻辑，会改写 CN 的 agent system prompt，
+  Intl 会替换 system/developer 内容；不能视作透明 Responses 或原生 compact 通道。
+- 模型目录为静态列表，真实账号权限、OAuth 和推理可用性需要线上授权后确认。
+- 部署前同时核对宿主、CPA 镜像、插件 ELF 架构。Dockerfile 使用 BuildKit 的
+  `TARGETARCH` 输出 `dist/linux/<arch>/`；ARM64 CPA 必须使用 ARM64 `.so`，
+  可在 ARM64 服务器原生构建，避免 CGO 使用不匹配的交叉编译器。
 
 ### v0.7.6 / v0.7.7（2026-08-29）重新登录后重复凭证
 

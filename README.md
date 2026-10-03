@@ -4,13 +4,30 @@ Repository: <https://github.com/ViceEye/cpa-provider-nexus>
 
 `cpa-provider-nexus` is an independent AGPL-3.0 native provider plugin for
 CLIProxyAPI. It connects multiple credential and model sources behind one CPA
-provider identity. The current release supports Kiro and Cline OAuth.
+provider identity. The current release supports Kiro, Cline and WorkBuddy OAuth.
 
 The production runtime consists only of CLIProxyAPI and
-`cpa-provider-nexus-v0.9.5.so`. Kiro Gateway is the protocol reference and is not a
+`cpa-provider-nexus-v0.10.0.so`. Kiro Gateway is the protocol reference and is not a
 sidecar or runtime dependency.
 
 ## Current release
+
+### v0.10.0 - 2026-09-28
+
+- Adds WorkBuddy / CodeBuddy CN and international browser authorization,
+  region-specific models, streaming and non-streaming Chat Completions, and quota cards.
+- Stores credentials as `type: "nexus", kind: "workbuddy", region: "cn" | "intl"`.
+  Refreshes preserve the original auth file, stable statistics ID, and host-owned fields.
+- Rejects invalid requests and malformed or incomplete non-streaming SSE responses;
+  propagates host stream errors instead of recording them as successful requests.
+- WorkBuddy uses the gateway compatibility transformations from the local 9router
+  adapter: CN may replace agent system prompts, while Intl replaces system/developer
+  messages with the required CodeBuddy identity. This changes instruction semantics;
+  it is not transparent Responses or remote-compaction support.
+- WorkBuddy models are a static catalog. Account-specific availability and live
+  OAuth/inference still require validation with an authorized account.
+- Docker builds target the selected platform and write artifacts under
+  `dist/linux/<arch>/`. Match the plugin architecture to the CPA container.
 
 ### v0.9.5 - 2026-09-04
 
