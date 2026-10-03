@@ -7,10 +7,20 @@ CLIProxyAPI. It connects multiple credential and model sources behind one CPA
 provider identity. The current release supports Kiro, Cline and WorkBuddy OAuth.
 
 The production runtime consists only of CLIProxyAPI and
-`cpa-provider-nexus-v0.10.0.so`. Kiro Gateway is the protocol reference and is not a
+`cpa-provider-nexus-v0.10.1.so`. Kiro Gateway is the protocol reference and is not a
 sidecar or runtime dependency.
 
 ## Current release
+
+### v0.10.1 - 2026-10-03
+
+- Removes OAuth callback processing from unauthenticated `/v0/resource/plugins/`
+  routes (issue #1). Only static console and icon assets remain public.
+- Submit browser callbacks through the console using the authenticated
+  `POST /v0/management/plugins/cpa-provider-nexus/oauth/callback` API.
+  Existing resource callback URLs now return 404 and are rejected in login configuration.
+  Use a loopback redirect with manual callback submission, or `aws-device` login.
+- Existing credentials and model requests are unaffected.
 
 ### v0.10.0 - 2026-09-28
 
@@ -546,6 +556,13 @@ This verifies dynamic model discovery, the authenticated quota Management API,
 OpenAI Chat Completions streaming and non-streaming output, tool calls,
 credential refresh, and multi-account failover for 402, 403, 429, and 5xx
 responses. All fixture credentials and responses are synthetic.
+
+For a focused OAuth route-boundary check, run `integration/run_oauth_boundary.py`
+against an isolated CPA configured with `integration/oauth-config.yaml` and the
+built plugin. Set `CPA_BASE_URL`, `CPA_MANAGEMENT_KEY`, and `CPA_API_KEY` to the
+fixture values. This checks public callback rejection with a valid login state,
+static asset access, and callback submission with missing, incorrect, API-only,
+and valid Management keys. It does not contact the OAuth upstream.
 
 ## Release checklist
 

@@ -119,9 +119,6 @@ func handleManagement(raw []byte) ([]byte, error) {
 	if errUnmarshal := json.Unmarshal(raw, &req); errUnmarshal != nil {
 		return nil, fmt.Errorf("decode Kiro management request: %w", errUnmarshal)
 	}
-	if isBrowserCallbackResourcePath(req.Path) {
-		return handleBrowserCallbackResource(req)
-	}
 	if isNexusLogoResourcePath(req.Path) {
 		return okEnvelope(managementResponse{
 			StatusCode: http.StatusOK,
@@ -135,6 +132,10 @@ func handleManagement(raw []byte) ([]byte, error) {
 			Headers:    http.Header{"Content-Type": []string{"text/html; charset=utf-8"}, "Cache-Control": []string{"no-store"}},
 			Body:       consolePanelHTML(),
 		})
+	}
+	// Public resources must never fall through to management business logic.
+	if strings.HasPrefix("/"+strings.Trim(strings.TrimSpace(req.Path), "/"), "/v0/resource/") {
+		return managementJSON(http.StatusNotFound, map[string]any{"error": "not_found"}), nil
 	}
 	path := normalizeManagementPath(req.Path)
 	if path == "/plugins/cpa-provider-nexus/oauth/relogin/start" {
@@ -281,11 +282,6 @@ func credentialAuthID(entry hostAuthFileEntry) string {
 		return stable
 	}
 	return credentialID(cred)
-}
-
-func isBrowserCallbackResourcePath(value string) bool {
-	path := strings.TrimRight(strings.TrimSpace(value), "/")
-	return path == "/v0/resource/plugins/cpa-provider-nexus/oauth" || path == "/v0/resource/plugins/cpa-provider-nexus/oauth/signin/callback"
 }
 
 func isConsoleResourcePath(value string) bool {

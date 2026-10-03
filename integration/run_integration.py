@@ -106,6 +106,46 @@ def assert_two_account_failover(snapshot: dict[str, Any], attempts: int = 2) -> 
     assert "unknown" not in accounts, snapshot
 
 
+def verify_oauth_boundary(state: str) -> None:
+    class NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            return None
+
+    opener = urllib.request.build_opener(NoRedirect)
+
+    def send(path, method="GET", key=None, payload=None):
+        headers = {"Content-Type": "application/json"}
+        if key is not None:
+            headers["Authorization"] = "Bearer " + key
+        data = None if payload is None else json.dumps(payload).encode()
+        req = urllib.request.Request(CPA + path, data=data, headers=headers, method=method)
+        try:
+            response = opener.open(req, timeout=20)
+        except urllib.error.HTTPError as error:
+            response = error
+        with response:
+            return response.code, response.headers, response.read()
+
+    for suffix in ("oauth", "oauth/", "oauth/signin/callback", "oauth/oauth/callback", "console/oauth/start", "quota"):
+        for method in ("GET", "POST"):
+            for values in ({"code": "fixture-browser-code"}, {"error": "access_denied"}, {"login_option": "builderid"}):
+                query = urllib.parse.urlencode({"state": state, **values})
+                code, headers, _ = send("/v0/resource/plugins/cpa-provider-nexus/" + suffix + "?" + query, method)
+                assert code == 404 and not headers.get("Location"), (suffix, method, code)
+    for suffix in ("console", "icon.svg"):
+        code, _, body = send("/v0/resource/plugins/cpa-provider-nexus/" + suffix)
+        assert code == 200 and body, (suffix, code)
+
+    path = "/v0/management/plugins/cpa-provider-nexus/oauth/callback"
+    payload = {"redirect_url": "http://localhost:3128?" + urllib.parse.urlencode({"state": state, "code": "fixture-browser-code"})}
+    for key in (None, "invalid-fixture-management-key", API_KEY):
+        code, _, _ = send(path, "POST", key, payload)
+        assert code in (401, 403), code
+    code, headers, body = send(path, "POST", MANAGEMENT_KEY, payload)
+    assert code == 200 and json.loads(body)["status"] == "accepted", (code, body)
+    assert not headers.get("Location"), headers
+
+
 def main() -> None:
     plugins = management_json("/v0/management/plugins")
     kiro = next(item for item in plugins["plugins"] if item["id"] == "cpa-provider-nexus")
@@ -187,20 +227,8 @@ def main() -> None:
     login_url = urllib.parse.urlparse(login["url"])
     login_query = urllib.parse.parse_qs(login_url.query)
     assert login_url.netloc == "app.kiro.dev" and login_url.path == "/signin", login
-    assert login_query["redirect_uri"] == [
-        "http://localhost:8317/v0/resource/plugins/cpa-provider-nexus/oauth"
-    ], login_query
-
-    callback_path = "/v0/resource/plugins/cpa-provider-nexus/oauth/signin/callback?" + urllib.parse.urlencode(
-        {"state": login["state"], "code": "fixture-browser-code"}
-    )
-    callback_page = public_request(callback_path).decode()
-    assert "Kiro authorization received" in callback_page, callback_page
-
-    invalid_path = "/v0/resource/plugins/cpa-provider-nexus/oauth?" + urllib.parse.urlencode(
-        {"state": "00000000-0000-4000-8000-000000000000", "code": "fixture-browser-code"}
-    )
-    public_request(invalid_path, expected_status=400)
+    assert login_query["redirect_uri"] == ["http://localhost:3128"], login_query
+    verify_oauth_boundary(login["state"])
 
     status: dict[str, Any] = {"status": "wait"}
     for _ in range(10):
@@ -212,7 +240,7 @@ def main() -> None:
         time.sleep(0.2)
     assert status["status"] == "ok", status
 
-    print("PASS: Kiro provider OpenAI and public OAuth Resource Route integration suite")
+    print("PASS: Kiro provider OpenAI and authenticated OAuth boundary integration suite")
 
 
 if __name__ == "__main__":

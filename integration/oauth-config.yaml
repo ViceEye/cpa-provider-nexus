@@ -15,6 +15,6 @@ plugins:
       enabled: true
       priority: 100
       login_mode: kiro-browser
-      browser_redirect_uri: "http://localhost:28317/v0/resource/plugins/cpa-provider-nexus/oauth"
+      browser_redirect_uri: "http://localhost:3128"
       desktop_token_url: "http://kiro-mock:18080/oauth/token"
       api_region: "eu-west-1"

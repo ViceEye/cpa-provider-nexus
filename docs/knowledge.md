@@ -94,6 +94,12 @@
 
 ## OAuth / 重新登录流程
 
+v0.10.1 起，公开 `/v0/resource/plugins/` 仅返回静态控制台和图标。
+旧 OAuth 资源回调返回 404，不能修改会话、调用宿主或返回动态跳转。
+`browser_redirect_uri` 不再接受 `/v0/resource/` 地址；使用 localhost 回调，
+由控制台通过带 Management Key 的管理接口提交，或改用 `aws-device`。
+
+
 顶部 OAuth 登录（`/console/oauth/*`）和认证文件卡片“重新登录”
 （`/oauth/relogin/*`）共用底层 `startLogin` / `pollLogin`，但**保存语义不同**：
 

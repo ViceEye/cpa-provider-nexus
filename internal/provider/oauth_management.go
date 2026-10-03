@@ -2,7 +2,6 @@ package provider
 
 import (
 	"encoding/json"
-	"html"
 	"net/http"
 	"net/url"
 	"strings"
@@ -57,34 +56,6 @@ func handleBrowserCallbackManagement(req managementRequest) ([]byte, error) {
 		Headers:    jsonHeaders(),
 		Body:       mustJSON(bodyResponse),
 	})
-}
-
-func handleBrowserCallbackResource(req managementRequest) ([]byte, error) {
-	if !strings.EqualFold(req.Method, http.MethodGet) {
-		return resourceCallbackPage(http.StatusMethodNotAllowed, "Unsupported request", "This Kiro callback only accepts GET requests.")
-	}
-	callbackURL, errURL := browserResourceCallbackURL(req)
-	if errURL != nil {
-		return resourceCallbackError(errURL)
-	}
-	outcome, errCallback := processBrowserCallback(callbackURL, req.HostCallbackID)
-	if errCallback != nil {
-		return resourceCallbackError(errCallback)
-	}
-	if outcome.Status == "continue" {
-		return okEnvelope(managementResponse{
-			StatusCode: http.StatusFound,
-			Headers: http.Header{
-				"Cache-Control":   []string{"no-store"},
-				"Location":        []string{outcome.URL},
-				"Referrer-Policy": []string{"no-referrer"},
-			},
-		})
-	}
-	if outcome.OAuthError {
-		return resourceCallbackPage(http.StatusBadRequest, "Kiro authorization failed", "Return to CPA and start the Kiro login again.")
-	}
-	return resourceCallbackPage(http.StatusOK, "Kiro authorization received", "You can close this page and return to CPA.")
 }
 
 func processBrowserCallback(callbackURL *url.URL, callbackID string) (browserCallbackOutcome, error) {
@@ -165,23 +136,6 @@ func processBrowserCallback(callbackURL *url.URL, callbackID string) (browserCal
 	}, nil
 }
 
-func browserResourceCallbackURL(req managementRequest) (*url.URL, error) {
-	expected, errParse := parseBrowserRedirectURI(loadedConfig().BrowserRedirectURI)
-	if errParse != nil {
-		return nil, callbackStatusError(http.StatusInternalServerError, "invalid_login_config", "Kiro browser redirect URI is invalid")
-	}
-	path := strings.TrimRight(strings.TrimSpace(req.Path), "/")
-	basePath := strings.TrimRight(expected.Path, "/")
-	if path != basePath && path != basePath+"/signin/callback" && path != basePath+"/oauth/callback" {
-		return nil, callbackStatusError(http.StatusBadRequest, "invalid_callback", "Kiro callback path does not match the configured redirect URI")
-	}
-	callback := *expected
-	callback.Path = path
-	callback.RawQuery = url.Values(req.Query).Encode()
-	callback.Fragment = ""
-	return &callback, nil
-}
-
 func validateVerificationURL(raw, region, startURL string) error {
 	parsed, errParse := url.Parse(strings.TrimSpace(raw))
 	if errParse != nil || parsed.Scheme != "https" || parsed.User != nil || parsed.Hostname() == "" {
@@ -224,6 +178,9 @@ func parseBrowserRedirectURI(raw string) (*url.URL, error) {
 	default:
 		return nil, callbackStatusError(http.StatusBadRequest, "invalid_callback", "Kiro browser redirect URI must use HTTP or HTTPS")
 	}
+	if strings.HasPrefix(parsed.Path, "/v0/resource/") {
+		return nil, callbackStatusError(http.StatusBadRequest, "invalid_callback", "Public resource OAuth callbacks are no longer supported; use a loopback redirect with authenticated callback submission or aws-device login")
+	}
 	parsed.Path = strings.TrimRight(parsed.Path, "/")
 	return parsed, nil
 }
@@ -259,33 +216,6 @@ func browserCallbackErrorResponse(err error) ([]byte, error) {
 		message = typed.Error()
 	}
 	return browserCallbackError(status, code, message)
-}
-
-func resourceCallbackError(err error) ([]byte, error) {
-	status := pluginHTTPStatus(err)
-	if status == 0 {
-		status = http.StatusInternalServerError
-	}
-	message := "Return to CPA and start the Kiro login again."
-	if status >= 500 {
-		message = "Kiro could not continue the login. Return to CPA and try again."
-	}
-	return resourceCallbackPage(status, "Kiro authorization failed", message)
-}
-
-func resourceCallbackPage(status int, title, message string) ([]byte, error) {
-	body := "<!doctype html><html lang=\"en\"><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><title>" + html.EscapeString(title) + "</title><body><main><h1>" + html.EscapeString(title) + "</h1><p>" + html.EscapeString(message) + "</p></main></body></html>"
-	return okEnvelope(managementResponse{
-		StatusCode: status,
-		Headers: http.Header{
-			"Cache-Control":           []string{"no-store"},
-			"Content-Security-Policy": []string{"default-src 'none'; style-src 'unsafe-inline'"},
-			"Content-Type":            []string{"text/html; charset=utf-8"},
-			"Referrer-Policy":         []string{"no-referrer"},
-			"X-Content-Type-Options":  []string{"nosniff"},
-		},
-		Body: []byte(body),
-	})
 }
 
 func callbackStatusError(status int, code, message string) statusError {

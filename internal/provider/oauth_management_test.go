@@ -9,31 +9,31 @@ import (
 	"time"
 )
 
-const resourceRedirectBase = "https://cpa.example/v0/resource/plugins/cpa-provider-nexus/oauth"
+const managementRedirectBase = "http://localhost:3128"
 
-func TestPublicBrowserCallbackAcceptsCodeAndPortalPath(t *testing.T) {
+func TestManagementBrowserCallbackAcceptsCodeAndPortalPath(t *testing.T) {
 	originalConfig := loadedConfig()
 	t.Cleanup(func() { configValue.Store(originalConfig) })
-	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: resourceRedirectBase})
+	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: managementRedirectBase})
 
 	for _, path := range []string{
-		"/v0/resource/plugins/cpa-provider-nexus/oauth",
-		"/v0/resource/plugins/cpa-provider-nexus/oauth/signin/callback",
+		"",
+		"/signin/callback",
 	} {
 		state := randomID()
 		storeBrowserLoginSession(browserLoginState{
 			Version: 1, LoginMode: defaultLoginMode, State: state, CodeVerifier: "verifier",
-			RedirectURI: resourceRedirectBase, TokenURL: defaultTokenURL, ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
+			RedirectURI: managementRedirectBase, TokenURL: defaultTokenURL, ExpiresAt: time.Now().UTC().Add(time.Minute).Format(time.RFC3339),
 		})
 		t.Cleanup(func() { clearBrowserLoginSession(state) })
 
-		response := handleManagementResponse(t, managementRequest{
+		response := submitManagementCallback(t, managementRequest{
 			Method: http.MethodGet,
 			Path:   path,
 			Query:  map[string][]string{"state": {state}, "code": {"fixture-code"}},
 		})
-		if response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), "Kiro authorization received") {
-			t.Fatalf("resource response for %s = status %d body %s", path, response.StatusCode, response.Body)
+		if response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"status":"accepted"`) {
+			t.Fatalf("management response for %s = status %d body %s", path, response.StatusCode, response.Body)
 		}
 		session, exists := browserLoginSessionForState(state)
 		if !exists || session.Callback == nil || session.Callback.Code != "fixture-code" {
@@ -42,18 +42,18 @@ func TestPublicBrowserCallbackAcceptsCodeAndPortalPath(t *testing.T) {
 	}
 }
 
-func TestPublicBrowserCallbackStoresOAuthError(t *testing.T) {
+func TestManagementBrowserCallbackStoresOAuthError(t *testing.T) {
 	originalConfig := loadedConfig()
 	t.Cleanup(func() { configValue.Store(originalConfig) })
-	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: resourceRedirectBase})
-	state := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: managementRedirectBase})
+	state := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
 
-	response := handleManagementResponse(t, managementRequest{
+	response := submitManagementCallback(t, managementRequest{
 		Method: http.MethodGet,
-		Path:   "/v0/resource/plugins/cpa-provider-nexus/oauth/signin/callback",
+		Path:   "/signin/callback",
 		Query:  map[string][]string{"state": {state}, "error": {"access_denied"}},
 	})
-	if response.StatusCode != http.StatusBadRequest {
+	if response.StatusCode != http.StatusOK {
 		t.Fatalf("OAuth error response status = %d body=%s", response.StatusCode, response.Body)
 	}
 	session, _ := browserLoginSessionForState(state)
@@ -62,7 +62,7 @@ func TestPublicBrowserCallbackStoresOAuthError(t *testing.T) {
 	}
 }
 
-func TestPublicOrganizationCallbackRedirectsAndPolls(t *testing.T) {
+func TestManagementOrganizationCallbackReturnsURLAndPolls(t *testing.T) {
 	originalConfig := loadedConfig()
 	originalHTTP := hostHTTPDoCall
 	t.Cleanup(func() {
@@ -70,7 +70,7 @@ func TestPublicOrganizationCallbackRedirectsAndPolls(t *testing.T) {
 		hostHTTPDoCall = originalHTTP
 	})
 	configValue.Store(pluginConfig{
-		LoginMode: defaultLoginMode, BrowserRedirectURI: resourceRedirectBase,
+		LoginMode: defaultLoginMode, BrowserRedirectURI: managementRedirectBase,
 		APIRegion: "us-east-1", ModelDiscoveryURL: "https://service.fixture.invalid",
 	})
 
@@ -94,7 +94,7 @@ func TestPublicOrganizationCallbackRedirectsAndPolls(t *testing.T) {
 		case "https://service.fixture.invalid/":
 			return hostHTTPResponse{StatusCode: http.StatusOK, Body: []byte(`{"profiles":[{"arn":"arn:aws:codewhisperer:us-east-1:000000000000:profile/resource"}]}`)}, nil
 		default:
-			t.Fatalf("unexpected resource OAuth request: %#v", req)
+			t.Fatalf("unexpected management OAuth request: %#v", req)
 			return hostHTTPResponse{}, nil
 		}
 	}
@@ -102,22 +102,19 @@ func TestPublicOrganizationCallbackRedirectsAndPolls(t *testing.T) {
 	start := startBrowserLoginForTest(t)
 	callback := managementRequest{
 		Method:         http.MethodGet,
-		Path:           "/v0/resource/plugins/cpa-provider-nexus/oauth/signin/callback",
+		Path:           "/signin/callback",
 		HostCallbackID: "resource-callback",
 		Query: map[string][]string{
 			"state": {start.State}, "login_option": {"awsidc"},
 			"issuer_url": {"https://example.awsapps.com/start"}, "idc_region": {"eu-west-1"},
 		},
 	}
-	response := handleManagementResponse(t, callback)
-	if response.StatusCode != http.StatusFound || response.Headers.Get("Location") != "https://device.sso.eu-west-1.amazonaws.com/?user_code=RESO-URCE" {
-		t.Fatalf("organization resource response = status %d headers %#v body=%s", response.StatusCode, response.Headers, response.Body)
-	}
-	if response.Headers.Get("Cache-Control") != "no-store" || response.Headers.Get("Referrer-Policy") != "no-referrer" {
-		t.Fatalf("organization resource security headers = %#v", response.Headers)
+	response := submitManagementCallback(t, callback)
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"url":"https://device.sso.eu-west-1.amazonaws.com/?user_code=RESO-URCE"`) {
+		t.Fatalf("organization management response = status %d headers %#v body=%s", response.StatusCode, response.Headers, response.Body)
 	}
 
-	duplicate := handleManagementResponse(t, callback)
+	duplicate := submitManagementCallback(t, callback)
 	if duplicate.StatusCode != http.StatusConflict || requests != 2 {
 		t.Fatalf("duplicate callback = status %d requests %d", duplicate.StatusCode, requests)
 	}
@@ -137,21 +134,21 @@ func TestPublicOrganizationCallbackRedirectsAndPolls(t *testing.T) {
 	var stored credential
 	_ = json.Unmarshal(poll.Auth.StorageJSON, &stored)
 	if poll.Status != "success" || stored.RefreshToken != "resource-refresh" || stored.Label != "Kiro Organization" || stored.ProfileARN == "" {
-		t.Fatalf("organization resource poll = %#v stored=%#v", poll, stored)
+		t.Fatalf("organization management poll = %#v stored=%#v", poll, stored)
 	}
 	if requests != 4 {
 		t.Fatalf("organization request count = %d, want 4", requests)
 	}
 }
 
-func TestPublicBuilderIDCallbackUsesDefaultIssuer(t *testing.T) {
+func TestManagementBuilderIDCallbackUsesDefaultIssuer(t *testing.T) {
 	originalConfig := loadedConfig()
 	originalHTTP := hostHTTPDoCall
 	t.Cleanup(func() {
 		configValue.Store(originalConfig)
 		hostHTTPDoCall = originalHTTP
 	})
-	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: resourceRedirectBase, SSORegion: "us-east-1"})
+	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: managementRedirectBase, SSORegion: "us-east-1"})
 
 	hostHTTPDoCall = func(req hostHTTPRequest) (hostHTTPResponse, error) {
 		switch req.URL {
@@ -169,24 +166,24 @@ func TestPublicBuilderIDCallbackUsesDefaultIssuer(t *testing.T) {
 			return hostHTTPResponse{}, nil
 		}
 	}
-	state := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
-	response := handleManagementResponse(t, managementRequest{
-		Method: http.MethodGet, Path: "/v0/resource/plugins/cpa-provider-nexus/oauth",
+	state := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	response := submitManagementCallback(t, managementRequest{
+		Method: http.MethodGet, Path: "",
 		Query: map[string][]string{"state": {state}, "login_option": {"builderid"}},
 	})
-	if response.StatusCode != http.StatusFound || response.Headers.Get("Location") != "https://device.sso.us-east-1.amazonaws.com/" {
+	if response.StatusCode != http.StatusOK || !strings.Contains(string(response.Body), `"url":"https://device.sso.us-east-1.amazonaws.com/"`) {
 		t.Fatalf("Builder ID response = status %d headers %#v", response.StatusCode, response.Headers)
 	}
 }
 
-func TestPublicCallbackRejectsInvalidInputs(t *testing.T) {
+func TestManagementCallbackRejectsInvalidInputs(t *testing.T) {
 	originalConfig := loadedConfig()
 	originalHTTP := hostHTTPDoCall
 	t.Cleanup(func() {
 		configValue.Store(originalConfig)
 		hostHTTPDoCall = originalHTTP
 	})
-	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: resourceRedirectBase})
+	configValue.Store(pluginConfig{LoginMode: defaultLoginMode, BrowserRedirectURI: managementRedirectBase})
 	hostHTTPDoCall = func(req hostHTTPRequest) (hostHTTPResponse, error) {
 		switch req.URL {
 		case "https://oidc.eu-west-1.amazonaws.com/client/register":
@@ -199,26 +196,26 @@ func TestPublicCallbackRejectsInvalidInputs(t *testing.T) {
 		}
 	}
 
-	unknown := handleManagementResponse(t, managementRequest{
-		Method: http.MethodGet, Path: "/v0/resource/plugins/cpa-provider-nexus/oauth",
+	unknown := submitManagementCallback(t, managementRequest{
+		Method: http.MethodGet, Path: "",
 		Query: map[string][]string{"state": {randomID()}, "code": {"code"}},
 	})
 	if unknown.StatusCode != http.StatusBadRequest {
 		t.Fatalf("unknown state status = %d", unknown.StatusCode)
 	}
 
-	expiredState := resourceBrowserSession(t, time.Now().UTC().Add(-time.Second))
-	expired := handleManagementResponse(t, managementRequest{
-		Method: http.MethodGet, Path: "/v0/resource/plugins/cpa-provider-nexus/oauth",
+	expiredState := managementBrowserSession(t, time.Now().UTC().Add(-time.Second))
+	expired := submitManagementCallback(t, managementRequest{
+		Method: http.MethodGet, Path: "",
 		Query: map[string][]string{"state": {expiredState}, "code": {"code"}},
 	})
 	if expired.StatusCode != http.StatusBadRequest {
 		t.Fatalf("expired state status = %d", expired.StatusCode)
 	}
 
-	badIssuerState := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
-	badIssuer := handleManagementResponse(t, managementRequest{
-		Method: http.MethodGet, Path: "/v0/resource/plugins/cpa-provider-nexus/oauth",
+	badIssuerState := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	badIssuer := submitManagementCallback(t, managementRequest{
+		Method: http.MethodGet, Path: "",
 		Query: map[string][]string{
 			"state": {badIssuerState}, "login_option": {"awsidc"},
 			"issuer_url": {"https://evil.example/start"}, "idc_region": {"eu-west-1"},
@@ -228,9 +225,9 @@ func TestPublicCallbackRejectsInvalidInputs(t *testing.T) {
 		t.Fatalf("bad issuer status = %d", badIssuer.StatusCode)
 	}
 
-	badRegionState := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
-	badRegion := handleManagementResponse(t, managementRequest{
-		Method: http.MethodGet, Path: "/v0/resource/plugins/cpa-provider-nexus/oauth",
+	badRegionState := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	badRegion := submitManagementCallback(t, managementRequest{
+		Method: http.MethodGet, Path: "",
 		Query: map[string][]string{
 			"state": {badRegionState}, "login_option": {"awsidc"},
 			"issuer_url": {"https://example.awsapps.com/start"}, "idc_region": {"not-a-region"},
@@ -240,9 +237,9 @@ func TestPublicCallbackRejectsInvalidInputs(t *testing.T) {
 		t.Fatalf("bad region status = %d", badRegion.StatusCode)
 	}
 
-	unsafeState := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
-	unsafe := handleManagementResponse(t, managementRequest{
-		Method: http.MethodGet, Path: "/v0/resource/plugins/cpa-provider-nexus/oauth",
+	unsafeState := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	unsafe := submitManagementCallback(t, managementRequest{
+		Method: http.MethodGet, Path: "",
 		Query: map[string][]string{
 			"state": {unsafeState}, "login_option": {"awsidc"},
 			"issuer_url": {"https://example.awsapps.com/start"}, "idc_region": {"eu-west-1"},
@@ -256,20 +253,20 @@ func TestPublicCallbackRejectsInvalidInputs(t *testing.T) {
 		t.Fatalf("unsafe verification left continuation state: %#v", session)
 	}
 
-	wrongHostState := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	wrongHostState := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
 	wrongHost, _ := url.Parse("https://evil.example/signin/callback?state=" + wrongHostState + "&code=code")
 	if _, errCallback := processBrowserCallback(wrongHost, ""); pluginHTTPStatus(errCallback) != http.StatusBadRequest {
 		t.Fatalf("wrong callback host error = %v", errCallback)
 	}
 
-	wrongPathState := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
-	wrongPath, _ := url.Parse(resourceRedirectBase + "/other?state=" + wrongPathState + "&code=code")
+	wrongPathState := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	wrongPath, _ := url.Parse(managementRedirectBase + "/other?state=" + wrongPathState + "&code=code")
 	if _, errCallback := processBrowserCallback(wrongPath, ""); pluginHTTPStatus(errCallback) != http.StatusBadRequest {
 		t.Fatalf("wrong callback path error = %v", errCallback)
 	}
 
-	duplicateState := resourceBrowserSession(t, time.Now().UTC().Add(time.Minute))
-	duplicate, _ := url.Parse(resourceRedirectBase + "?state=" + duplicateState + "&code=first")
+	duplicateState := managementBrowserSession(t, time.Now().UTC().Add(time.Minute))
+	duplicate, _ := url.Parse(managementRedirectBase + "?state=" + duplicateState + "&code=first")
 	if _, errCallback := processBrowserCallback(duplicate, ""); errCallback != nil {
 		t.Fatal(errCallback)
 	}
@@ -277,7 +274,7 @@ func TestPublicCallbackRejectsInvalidInputs(t *testing.T) {
 	if _, errCallback := processBrowserCallback(duplicate, ""); pluginHTTPStatus(errCallback) != http.StatusConflict {
 		t.Fatalf("duplicate callback error = %v", errCallback)
 	}
-	deviceAfterCode, _ := url.Parse(resourceRedirectBase + "?state=" + duplicateState + "&login_option=builderid")
+	deviceAfterCode, _ := url.Parse(managementRedirectBase + "?state=" + duplicateState + "&login_option=builderid")
 	if _, errCallback := processBrowserCallback(deviceAfterCode, ""); pluginHTTPStatus(errCallback) != http.StatusConflict {
 		t.Fatalf("device continuation after code error = %v", errCallback)
 	}
@@ -287,12 +284,12 @@ func TestUnifiedPortalRemainsDefaultWithConfiguredOrganization(t *testing.T) {
 	originalConfig := loadedConfig()
 	t.Cleanup(func() { configValue.Store(originalConfig) })
 	configValue.Store(pluginConfig{
-		LoginMode: defaultLoginMode, BrowserRedirectURI: resourceRedirectBase,
+		LoginMode: defaultLoginMode, BrowserRedirectURI: managementRedirectBase,
 		SSOStartURL: "https://example.awsapps.com/start", SSORegion: "eu-west-1",
 	})
 	start := startBrowserLoginForTest(t)
 	loginURL, errParse := url.Parse(start.URL)
-	if errParse != nil || loginURL.Host != "app.kiro.dev" || loginURL.Query().Get("redirect_uri") != resourceRedirectBase {
+	if errParse != nil || loginURL.Host != "app.kiro.dev" || loginURL.Query().Get("redirect_uri") != managementRedirectBase {
 		t.Fatalf("unified portal URL = %q err=%v", start.URL, errParse)
 	}
 }
@@ -301,7 +298,8 @@ func TestBrowserRedirectURIValidation(t *testing.T) {
 	for input, valid := range map[string]bool{
 		"http://localhost:3128": true,
 		"http://127.0.0.1:3128": true,
-		resourceRedirectBase:    true,
+		"https://cpa.example/v0/resource/plugins/cpa-provider-nexus/oauth":             false,
+		"http://localhost:3128/v0/resource/plugins/cpa-provider-nexus/oauth":           false,
 		"http://cpa.example/v0/resource/plugins/cpa-provider-nexus/oauth":              false,
 		"https://user:secret@cpa.example/v0/resource/plugins/cpa-provider-nexus/oauth": false,
 		"javascript:alert(1)": false,
@@ -313,12 +311,12 @@ func TestBrowserRedirectURIValidation(t *testing.T) {
 	}
 }
 
-func resourceBrowserSession(t *testing.T, expiresAt time.Time) string {
+func managementBrowserSession(t *testing.T, expiresAt time.Time) string {
 	t.Helper()
 	state := randomID()
 	storeBrowserLoginSession(browserLoginState{
 		Version: 1, LoginMode: defaultLoginMode, State: state, CodeVerifier: "verifier",
-		RedirectURI: resourceRedirectBase, TokenURL: defaultTokenURL, APIRegion: defaultRegion,
+		RedirectURI: managementRedirectBase, TokenURL: defaultTokenURL, APIRegion: defaultRegion,
 		ExpiresAt: expiresAt.Format(time.RFC3339),
 	})
 	t.Cleanup(func() {
@@ -364,4 +362,15 @@ func handleManagementResponse(t *testing.T, req managementRequest) managementRes
 		t.Fatal(errDecode)
 	}
 	return response
+}
+
+// Exercise the same authenticated management route used by the console.
+func submitManagementCallback(t *testing.T, req managementRequest) managementResponse {
+	t.Helper()
+	suffix := req.Path
+	return handleManagementResponse(t, managementRequest{
+		Method: http.MethodPost, Path: "/v0/management/plugins/cpa-provider-nexus/oauth/callback",
+		HostCallbackID: req.HostCallbackID,
+		Body:           mustJSON(map[string]string{"redirect_url": managementRedirectBase + suffix + "?" + url.Values(req.Query).Encode()}),
+	})
 }

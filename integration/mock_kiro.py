@@ -150,7 +150,6 @@ class Handler(BaseHTTPRequestHandler):
                 or request.get("redirect_uri")
                 not in {
                     "http://localhost:3128",
-                    "http://localhost:8317/v0/resource/plugins/cpa-provider-nexus/oauth",
                 }
             ):
                 self._json(400, {"message": "invalid browser token exchange"})
