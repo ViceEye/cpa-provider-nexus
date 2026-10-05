@@ -7,10 +7,18 @@ CLIProxyAPI. It connects multiple credential and model sources behind one CPA
 provider identity. The current release supports Kiro, Cline and WorkBuddy OAuth.
 
 The production runtime consists only of CLIProxyAPI and
-`cpa-provider-nexus-v0.10.1.so`. Kiro Gateway is the protocol reference and is not a
+`cpa-provider-nexus-v0.10.2.so` (or `.dylib` on macOS, `.dll` on Windows). Kiro Gateway is the protocol reference and is not a
 sidecar or runtime dependency.
 
 ## Current release
+
+### v0.10.2 - 2026-10-04
+
+- Adds full multi-platform binary distributions for CLIProxyAPI Plugins Store submission (issue #2):
+  - Linux (`amd64`, `arm64`)
+  - Darwin / macOS (`amd64`, `arm64`)
+  - Windows (`amd64`)
+- Packages each target dynamic library directly at the archive root (`<id>.<ext>`) with an unified `checksums.txt`.
 
 ### v0.10.1 - 2026-10-03
 

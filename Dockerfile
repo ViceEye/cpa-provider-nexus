@@ -13,10 +13,10 @@ RUN /usr/local/go/bin/gofmt -w cmd/cpa-provider-nexus/*.go internal/*/*.go \
     && CGO_ENABLED=1 GOOS=linux GOARCH=${TARGETARCH} /usr/local/go/bin/go build \
        -buildvcs=false -trimpath -buildmode=c-shared \
        -ldflags="-s -w" \
-       -o /out/linux/${TARGETARCH}/cpa-provider-nexus-v0.10.1.so ./cmd/cpa-provider-nexus \
+       -o /out/linux/${TARGETARCH}/cpa-provider-nexus-v0.10.2.so ./cmd/cpa-provider-nexus \
     && rm -f /out/linux/${TARGETARCH}/*.h \
     && cd /out/linux/${TARGETARCH} \
-    && sha256sum cpa-provider-nexus-v0.10.1.so > cpa-provider-nexus-v0.10.1.so.sha256
+    && sha256sum cpa-provider-nexus-v0.10.2.so > cpa-provider-nexus-v0.10.2.so.sha256
 
 FROM scratch
 COPY --from=builder /out/ /

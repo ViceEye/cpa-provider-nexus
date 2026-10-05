@@ -22,10 +22,10 @@ jobs:
       version: ${{ steps.version.outputs.version }}
       release_tag: ${{ steps.version.outputs.release_tag }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && inputs.release_tag || github.ref }}
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
           cache: true
@@ -52,42 +52,117 @@ jobs:
       - name: Vet
         run: go vet ./...
       - name: Test
-        run: go test ./...
-      - name: Build Linux plugin
-        env:
-          VERSION: ${{ steps.version.outputs.version }}
+        run: go test ./internal/... ./cmd/...
+
+  build:
+    name: Build ${{ matrix.os }}-${{ matrix.arch }}
+    needs: test
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: linux
+            arch: amd64
+            runner: ubuntu-latest
+            ext: so
+          - os: linux
+            arch: arm64
+            runner: ubuntu-latest
+            ext: so
+          - os: darwin
+            arch: amd64
+            runner: macos-13
+            ext: dylib
+          - os: darwin
+            arch: arm64
+            runner: macos-latest
+            ext: dylib
+          - os: windows
+            arch: amd64
+            runner: ubuntu-latest
+            ext: dll
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.release_tag != '' && inputs.release_tag || github.ref }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install cross compilers (Ubuntu)
+        if: runner.os == 'Linux'
         run: |
-          mkdir -p dist/linux/amd64 dist/package dist/release
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build \
-            -buildvcs=false -trimpath -buildmode=c-shared \
-            -ldflags="-s -w" \
-            -o "dist/linux/amd64/cpa-provider-nexus-v${VERSION}.so" ./cmd/cpa-provider-nexus
-          rm -f "dist/linux/amd64/cpa-provider-nexus-v${VERSION}.h"
-          test -s "dist/linux/amd64/cpa-provider-nexus-v${VERSION}.so"
-          cp "dist/linux/amd64/cpa-provider-nexus-v${VERSION}.so" dist/package/cpa-provider-nexus.so
-          archive="cpa-provider-nexus_${VERSION}_linux_amd64.zip"
-          (cd dist/package && zip -9 "../release/${archive}" cpa-provider-nexus.so)
-          (cd dist/release && sha256sum "$archive" > checksums.txt)
-          test "$(unzip -Z1 "dist/release/${archive}")" = "cpa-provider-nexus.so"
-          (cd dist/release && sha256sum -c checksums.txt)
-      - name: Upload release assets
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq gcc-aarch64-linux-gnu gcc-mingw-w64-x86-64 zip
+
+      - name: Build plugin
+        env:
+          GOOS: ${{ matrix.os }}
+          GOARCH: ${{ matrix.arch }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          mkdir -p dist/package
+          if [ "${{ matrix.os }}" = "linux" ] && [ "${{ matrix.arch }}" = "amd64" ]; then
+            CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -buildmode=c-shared \
+              -o "dist/package/cpa-provider-nexus.${EXT}" ./cmd/cpa-provider-nexus
+          elif [ "${{ matrix.os }}" = "linux" ] && [ "${{ matrix.arch }}" = "arm64" ]; then
+            CC=aarch64-linux-gnu-gcc CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -buildmode=c-shared \
+              -o "dist/package/cpa-provider-nexus.${EXT}" ./cmd/cpa-provider-nexus
+          elif [ "${{ matrix.os }}" = "windows" ] && [ "${{ matrix.arch }}" = "amd64" ]; then
+            CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -buildmode=c-shared \
+              -o "dist/package/cpa-provider-nexus.${EXT}" ./cmd/cpa-provider-nexus
+          elif [ "${{ matrix.os }}" = "darwin" ]; then
+            CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -buildmode=c-shared \
+              -o "dist/package/cpa-provider-nexus.${EXT}" ./cmd/cpa-provider-nexus
+          fi
+          rm -f dist/package/*.h
+          test -s "dist/package/cpa-provider-nexus.${EXT}"
+
+      - name: Package zip archive
+        env:
+          VERSION: ${{ needs.test.outputs.version }}
+          OS: ${{ matrix.os }}
+          ARCH: ${{ matrix.arch }}
+          EXT: ${{ matrix.ext }}
+        run: |
+          mkdir -p dist/release
+          archive="cpa-provider-nexus_${VERSION}_${OS}_${ARCH}.zip"
+          (cd dist/package && zip -9 "../../dist/release/${archive}" "cpa-provider-nexus.${EXT}")
+          test "$(unzip -Z1 "dist/release/${archive}")" = "cpa-provider-nexus.${EXT}"
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cpa-provider-nexus-release-v${{ steps.version.outputs.version }}
-          path: dist/
+          name: asset-${{ matrix.os }}-${{ matrix.arch }}
+          path: dist/release/*.zip
           if-no-files-found: error
 
   release:
-    needs: test
+    name: Publish Release
+    needs: [test, build]
     if: needs.test.outputs.release_tag != ''
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download all platform archives
+        uses: actions/download-artifact@v4
         with:
-          name: cpa-provider-nexus-release-v${{ needs.test.outputs.version }}
-          path: dist
+          path: dist/release
+          pattern: asset-*
+          merge-multiple: true
+
+      - name: Generate and verify checksums
+        working-directory: dist/release
+        run: |
+          ls -la
+          test $(ls -1 cpa-provider-nexus_*_*.zip | wc -l) -eq 5
+          sha256sum cpa-provider-nexus_*_*.zip > checksums.txt
+          cat checksums.txt
+          sha256sum -c checksums.txt
+
       - name: Create or update GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
