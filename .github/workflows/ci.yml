@@ -72,7 +72,7 @@ jobs:
             ext: so
           - os: darwin
             arch: amd64
-            runner: macos-13
+            runner: macos-latest
             ext: dylib
           - os: darwin
             arch: arm64
@@ -114,7 +114,7 @@ jobs:
             CC=x86_64-w64-mingw32-gcc CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -buildmode=c-shared \
               -o "dist/package/cpa-provider-nexus.${EXT}" ./cmd/cpa-provider-nexus
           elif [ "${{ matrix.os }}" = "darwin" ]; then
-            CGO_ENABLED=1 go build -trimpath -ldflags="-s -w" -buildmode=c-shared \
+            CGO_ENABLED=1 GOOS=darwin GOARCH="${{ matrix.arch }}" go build -trimpath -ldflags="-s -w" -buildmode=c-shared \
               -o "dist/package/cpa-provider-nexus.${EXT}" ./cmd/cpa-provider-nexus
           fi
           rm -f dist/package/*.h
