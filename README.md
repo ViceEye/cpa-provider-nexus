@@ -7,10 +7,19 @@ CLIProxyAPI. It connects multiple credential and model sources behind one CPA
 provider identity. The current release supports Kiro, Cline and WorkBuddy OAuth.
 
 The production runtime consists only of CLIProxyAPI and
-`cpa-provider-nexus-v0.10.2.so` (or `.dylib` on macOS, `.dll` on Windows). Kiro Gateway is the protocol reference and is not a
+`cpa-provider-nexus-v0.10.3.so` (or `.dylib` on macOS, `.dll` on Windows). Kiro Gateway is the protocol reference and is not a
 sidecar or runtime dependency.
 
 ## Current release
+
+### v0.10.3 - 2026-10-13
+
+- Adds daily and manual Claude OAuth quota activation plans to the Nexus console,
+  with per-credential model selection and timezone settings.
+- Sends a native OAuth Messages request through the CPA host HTTP bridge,
+  limited to one output token and the selected credential without fallback.
+- Rejects disabled, mismatched and non-OAuth credentials; requires a completed
+  message with valid usage before reporting success.
 
 ### v0.10.2 - 2026-10-04
 

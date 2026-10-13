@@ -122,7 +122,7 @@ func registration(raw []byte) ([]byte, error) {
 				map[string]any{"Name": "runtime_base_url", "Type": "string", "Description": "Optional Kiro runtime base URL override for private gateways and tests."},
 				map[string]any{"Name": "model_discovery_url", "Type": "string", "Description": "Optional Kiro ListAvailableModels service endpoint override. Defaults to https://q.{region}.amazonaws.com/."},
 				map[string]any{"Name": "usage_url", "Type": "string", "Description": "Optional Kiro GetUsageLimits service endpoint override. Defaults to https://q.{region}.amazonaws.com/."},
-				map[string]any{"Name": "quota_triggers", "Type": "array", "Description": "Daily Codex and Antigravity model activation plans persisted in the Nexus console."},
+				map[string]any{"Name": "quota_triggers", "Type": "array", "Description": "Daily Codex, Antigravity and Claude OAuth model activation plans persisted in the Nexus console."},
 			},
 		},
 		"capabilities": map[string]any{

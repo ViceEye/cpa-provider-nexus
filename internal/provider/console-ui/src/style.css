@@ -1306,6 +1306,11 @@ body {
   color: #0e7490;
 }
 
+.triggerProviderclaude {
+  background: color-mix(in srgb, #c15f3c 15%, var(--bg-tertiary));
+  color: #c15f3c;
+}
+
 .quotaTriggerRowMeta,
 .quotaTriggerRowStatus,
 .quotaTriggerRowNext {

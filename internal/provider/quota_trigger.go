@@ -24,6 +24,7 @@ const (
 var quotaTriggerProviders = map[string]struct{}{
 	"codex":       {},
 	"antigravity": {},
+	"claude":      {},
 }
 
 // quotaTriggerSchedule is persisted below plugins.configs.cpa-provider-nexus.
@@ -151,7 +152,8 @@ func normalizeQuotaTriggerModel(value string) string {
 	model := strings.TrimSpace(value)
 	model = strings.TrimPrefix(model, "nexus/")
 	model = strings.TrimPrefix(model, "codex/")
-	return strings.TrimPrefix(model, "antigravity/")
+	model = strings.TrimPrefix(model, "antigravity/")
+	return strings.TrimPrefix(model, "claude/")
 }
 
 func normalizeQuotaTriggerSchedule(schedule quotaTriggerSchedule) (quotaTriggerSchedule, error) {
@@ -430,6 +432,7 @@ func handleQuotaTriggerRun(req managementRequest) ([]byte, error) {
 }
 
 func executeQuotaTrigger(schedule quotaTriggerSchedule, callbackID string) error {
+	provider := normalizeQuotaTriggerProvider(schedule.Provider)
 	result, errGet := callHostCall("host.auth.get", map[string]any{"auth_index": schedule.AuthIndex})
 	if errGet != nil {
 		return fmt.Errorf("读取凭证失败")
@@ -438,28 +441,48 @@ func executeQuotaTrigger(schedule quotaTriggerSchedule, callbackID string) error
 	if json.Unmarshal(result, &auth) != nil || len(auth.JSON) == 0 {
 		return fmt.Errorf("读取凭证失败")
 	}
+	if provider == "claude" && auth.AuthIndex != schedule.AuthIndex {
+		return fmt.Errorf("Claude唤醒失败：凭证索引不匹配")
+	}
 	if runtimeResult, errRuntime := callHostCall("host.auth.get_runtime", map[string]any{"auth_index": schedule.AuthIndex}); errRuntime == nil {
 		var runtime struct {
-			Auth struct {
-				Disabled bool `json:"disabled"`
+			Auth *struct {
+				AuthIndex string `json:"auth_index"`
+				Provider  string `json:"provider"`
+				Disabled  bool   `json:"disabled"`
 			} `json:"auth"`
 		}
-		if json.Unmarshal(runtimeResult, &runtime) == nil && runtime.Auth.Disabled {
+		errDecode := json.Unmarshal(runtimeResult, &runtime)
+		if provider == "claude" && (errDecode != nil || runtime.Auth == nil ||
+			runtime.Auth.AuthIndex != schedule.AuthIndex || normalizeQuotaTriggerProvider(runtime.Auth.Provider) != "claude") {
+			return fmt.Errorf("Claude唤醒失败：无法确认凭证状态")
+		}
+		if errDecode == nil && runtime.Auth != nil && runtime.Auth.Disabled {
 			return fmt.Errorf("凭证已停用")
 		}
+	} else if provider == "claude" {
+		return fmt.Errorf("Claude唤醒失败：无法确认凭证状态")
 	}
-	material, errMaterial := quotaactivation.ParseAuthMaterial(auth.JSON)
+	var material quotaactivation.AuthMaterial
+	var errMaterial error
+	if provider == "claude" {
+		material, errMaterial = quotaactivation.ParseClaudeAuthMaterial(auth.JSON)
+	} else {
+		material, errMaterial = quotaactivation.ParseAuthMaterial(auth.JSON)
+	}
 	if errMaterial != nil {
 		return errMaterial
 	}
 
 	var protocol quotaactivation.ProtocolRequest
 	var errProtocol error
-	switch normalizeQuotaTriggerProvider(schedule.Provider) {
+	switch provider {
 	case "codex":
 		protocol, errProtocol = quotaactivation.BuildCodexProtocol(material, schedule.Model, quotaTriggerPrompt)
 	case "antigravity":
 		protocol, errProtocol = quotaactivation.BuildAntigravityProtocol(material, schedule.Model, quotaTriggerPrompt)
+	case "claude":
+		protocol, errProtocol = quotaactivation.BuildClaudeProtocol(material, normalizeQuotaTriggerModel(schedule.Model), quotaTriggerPrompt)
 	default:
 		return fmt.Errorf("不支持的提供方")
 	}
@@ -478,10 +501,13 @@ func executeQuotaTrigger(schedule quotaTriggerSchedule, callbackID string) error
 	}
 	var ok bool
 	var message string
-	if normalizeQuotaTriggerProvider(schedule.Provider) == "codex" {
+	switch provider {
+	case "codex":
 		ok, message = quotaactivation.EvaluateCodexActivationSuccess(response.StatusCode, response.Body)
-	} else {
+	case "antigravity":
 		ok, message = quotaactivation.EvaluateAntigravityActivationSuccess(response.StatusCode, response.Body)
+	case "claude":
+		ok, message = quotaactivation.EvaluateClaudeActivationSuccess(response.StatusCode, response.Body)
 	}
 	if !ok {
 		if strings.TrimSpace(message) == "" {

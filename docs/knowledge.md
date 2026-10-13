@@ -117,12 +117,16 @@ v0.10.1 起，公开 `/v0/resource/plugins/` 仅返回静态控制台和图标�
 
 ## Quota 唤醒计划
 
-- Nexus 控制台目前只为 **Codex** 和 **Antigravity** 提供每日唤醒计划；计划会在
+- Nexus 控制台为 **Codex**、**Antigravity** 和 **Claude OAuth** 提供每日唤醒计划；计划会在
   指定时区的指定时间，对指定 `auth_index` 发起一次真实模型请求，用来消耗一次调用
   并启动上游的 quota 窗口。它不是额度查询，也不会因为打开或刷新面板而触发。
 - 唤醒请求构建和严格成功判定适配自
   `quota-activation` 的 Codex/Antigravity direct HTTP 路径；所有请求仍经 CPA 的
   `host.http.do` 宿主桥发送，计划不走其它凭证的调度回退。
+- Claude 使用原生 Messages 请求，携带 OAuth beta、Claude Code 身份和 CLI UA，
+  最多生成 1 个输出 token。执行前确认所选凭证的运行时状态和提供方，停用、缺失或
+  非 Claude OAuth 凭证不会发送请求；HTTP 2xx 还需包含完整消息和有效用量才算成功。
+  Claude API Key 不属于订阅额度唤醒支持范围。
 - 控制台通过 CPA 通用插件配置接口持久化
   `plugins.configs.cpa-provider-nexus.quota_triggers`。后台调度器每 15 秒检查一次，
   同一计划同一自然日最多执行一次；计划创建或服务启动时若已错过当天时间，则等待

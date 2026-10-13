@@ -1623,7 +1623,7 @@ function Card({ file, mgmtKey, onChanged, refreshAll, onOpenQuotaTrigger }) {
           <button className="btn modelButton" onClick={showModels} disabled={modelsLoading} title="查看支持的模型">
             {modelsLoading ? '加载中…' : <><ModelClusterIcon size={14} /><span>模型</span></>}
           </button>
-          {(isCodex || isAntigravity) && (
+          {(isCodex || isAntigravity || providerKey === 'claude') && (
             <button className="btn iconButton" onClick={() => onOpenQuotaTrigger?.(file.auth_index)} disabled={!file.auth_index} title="设置每日 Quota 唤醒" aria-label="设置每日 Quota 唤醒">
               <ClockIcon />
             </button>
@@ -1715,7 +1715,7 @@ function quotaTriggerModelValue(model) {
     : model?.id ?? model?.model_id ?? model?.modelId ?? model?.name ?? '';
   return String(raw || '')
     .trim()
-    .replace(/^(?:nexus|codex|antigravity)\//i, '');
+    .replace(/^(?:nexus|codex|antigravity|claude)\//i, '');
 }
 
 function quotaTriggerModelLabel(model, value) {
@@ -1739,7 +1739,7 @@ function normalizeQuotaTriggerModels(models) {
 
 function QuotaTriggerPanel({ mgmtKey, files, targetAuthIndex, onClose, onChanged }) {
   const candidates = useMemo(
-    () => files.filter((file) => ['codex', 'antigravity'].includes(normalizeKey(file.provider || file.type)) && file.auth_index),
+    () => files.filter((file) => ['codex', 'antigravity', 'claude'].includes(normalizeKey(file.provider || file.type)) && file.auth_index),
     [files]
   );
   const browserTimezone = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', []);
@@ -2060,7 +2060,7 @@ function QuotaTriggerPanel({ mgmtKey, files, targetAuthIndex, onClose, onChanged
 
         <div className="triggerNotice">
           <InfoIcon size={14} />
-          <span>每次计划会消耗一次真实模型调用，用于启动 Codex 或 Antigravity 的额度窗口；不会因为刷新网页而触发。</span>
+          <span>每次计划会消耗一次真实模型调用，用于启动 Codex、Antigravity 或 Claude OAuth 的额度窗口；不会因为刷新网页而触发。</span>
         </div>
 
         {(formError || notice) && <div className={formError ? 'errorBox triggerMessage' : 'triggerSuccess'}>{formError || notice}</div>}
@@ -2084,7 +2084,7 @@ function QuotaTriggerPanel({ mgmtKey, files, targetAuthIndex, onClose, onChanged
                   }}
                   disabled={!candidates.length || saving}
                 >
-                  <option value="">选择 Codex 或 Antigravity 凭证</option>
+                  <option value="">选择 Codex、Antigravity 或 Claude 凭证</option>
                   {candidates.map((file) => <option key={file.auth_index} value={file.auth_index}>{quotaTriggerAccountLabel(file)}</option>)}
                 </select>
               </label>
