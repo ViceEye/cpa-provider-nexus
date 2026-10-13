@@ -167,6 +167,11 @@ docker build --output type=local,dest=dist .
 发版同步三处版本号：`internal/provider/types.go` 的 `pluginVersion`、
 `Dockerfile` 产物名、README 版本说明。
 
+Windows 上打包已提交源码供 Linux 构建时，使用
+`git -c core.autocrlf=false archive --format=tar.gz --output=temp/source.tar.gz HEAD`。
+未覆盖 `core.autocrlf` 的归档可能带入 CRLF，使服务器的 `gofmt -l` 检查失败；
+不要通过修改正式源码或跳过格式检查来处理归档换行问题。
+
 ## 服务器部署
 
 生产服务器（下例以 `cpa.example.com` 指代，Docker 容器 `cli-proxy-api`）：
@@ -192,6 +197,24 @@ docker build --output type=local,dest=dist .
 服务器部署与 Git 推送分开执行；未明确要求时不要自动更新服务器。
 
 ## 历史决策与根因记录
+
+### v0.10.3 Claude Quota 唤醒部署（2026-10-13）
+
+- 功能提交 `fdd5e8898ced76c67f07d2f0c62db826d772cefc` 已推送至 `main`。
+  GitHub CI `38397918016` 的测试和 Linux、Darwin、Windows 五个平台构建全部通过；
+  本次未推送 release tag，发布任务未执行。
+- 同一提交在 `ai.venja.cc` 使用 Go 1.26.7 / Debian bookworm 原生 ARM64 构建，
+  格式检查、`go vet ./...`、`go test ./...` 和 `c-shared` 编译通过。
+  插件 SHA256 为 `d06a8922b976e5ed0761445962cc46b32f4f988554620329c2cb169c3a3ccb3c`。
+- 已安装 `/root/CLIProxyAPI/plugins/cpa-provider-nexus-v0.10.3.so`。
+  旧插件暂存为
+  `/root/CLIProxyAPI/plugins/cpa-provider-nexus-v0.10.1.so.bak-claude-quota-20261013T124002Z`，
+  非 `.so` 结尾，不会被加载。
+- 管理接口确认 Provider Nexus v0.10.3 和 Nexus Management v0.1.0 注册启用；
+  6 个凭证、2 个子 Key、40 个模型和 3 条既有唤醒计划均保留，Claude 凭证动态返回
+  19 个可选模型。CPA 镜像、配置、挂载、端口及子 Key 控制台内容未变，重启计数为 0。
+- Provider 控制台内容与本次编译源码一致，匿名访问唤醒管理接口被拒绝。
+  未自动新增 Claude 计划，未发出真实模型请求；实际额度窗口唤醒仍需用户执行验证。
 
 ### v0.10.1 OAuth 资源路由安全修复部署（2026-10-03）
 
