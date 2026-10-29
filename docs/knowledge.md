@@ -226,9 +226,27 @@ Windows 上打包已提交源码供 Linux 构建时，使用
   探针只在服务器内存中读取令牌，不打印或持久化凭据。
 - 本地 Go 1.26.10 Docker 环境的 `go vet ./...`、`go test -count=1 ./...`、
   WorkBuddy `go test -race -count=1` 均通过；项目 Dockerfile 额外执行完整测试并
-  产出 `dist/linux/amd64/cpa-provider-nexus-v0.10.4.so`。生产服务器是 ARM64，
-  此 AMD64 产物不得直接安装到生产容器，部署前需另建 ARM64 产物。
-- 未自动推送、发布或部署。
+  产出 AMD64 插件。生产服务器是 ARM64，不能使用 AMD64 产物。
+- 经用户授权，修复提交 `528525b41df1d8cfd26da2f3fb135f33f0d2e687` 已推送 `main`，
+  并在 `ai.venja.cc` 使用 Go 1.26.10 / Debian bookworm 原生 ARM64 构建。
+  构建限制 2 核、2 GB 内存，格式检查、完整 vet/test、WorkBuddy race 和
+  `c-shared` 编译均通过，ELF 的 `e_machine` 确认为 AArch64（183）。
+- 已安装 `/root/CLIProxyAPI/plugins/cpa-provider-nexus-v0.10.4.so`，SHA256 为
+  `ae9262249ddfc5a67aa96b5236839bc99a7c5c137629c83e06e991da47d341b5`。
+  同一产物已通过固定主机密钥的 SFTP 取回本地
+  `dist/linux/arm64/cpa-provider-nexus-v0.10.4.so`，校验值一致。
+- 本次只重启 CPA 容器，没有更新 CPA 镜像、Compose、业务配置或其它插件。
+  部署后 Provider Nexus `0.10.4`、Nexus Management `0.1.1` 注册启用；
+  7 个凭证身份、44 个模型、2 个子 Key（含权限/限制与计数）和 4 条唤醒计划保留，
+  两个插件页面内容哈希不变。容器正常运行，重启计数为 0。
+- 通过公开 HTTPS API 验证：`nexus/deepseek-v4.1-flash` 非流式、
+  `nexus/wb/deepseek-v4.1-flash` 流式 Chat Completions 均为 HTTP 200，
+  返回模型 `deepseek-v4.1-flash`，完整结束；`wb` 别名的 Responses 请求携带
+  一个函数工具定义也返回 HTTP 200 / `response.completed`。没有重放用户的
+  原始长上下文或 388 工具载荷，因此不把最小冒烟验证等同于所有复杂请求均兼容。
+- 回滚目录：`/root/CLIProxyAPI/backups/nexus-v0.10.4-20261029T155041Z`，
+  保存旧插件、原始配置/Compose 和私有部署基线；部署事务支持健康失败自动恢复。
+  未创建 release tag，未配置自动部署。
 
 ### v0.10.3 Claude Quota 唤醒部署（2026-10-13）
 
