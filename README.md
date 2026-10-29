@@ -7,10 +7,19 @@ CLIProxyAPI. It connects multiple credential and model sources behind one CPA
 provider identity. The current release supports Kiro, Cline and WorkBuddy OAuth.
 
 The production runtime consists only of CLIProxyAPI and
-`cpa-provider-nexus-v0.10.3.so` (or `.dylib` on macOS, `.dll` on Windows). Kiro Gateway is the protocol reference and is not a
+`cpa-provider-nexus-v0.10.4.so` (or `.dylib` on macOS, `.dll` on Windows). Kiro Gateway is the protocol reference and is not a
 sidecar or runtime dependency.
 
 ## Current release
+
+### v0.10.4 - 2026-10-29
+
+- 同步 9router v0.5.112（提交 `1fe586bb`）的 WorkBuddy/CodeBuddy 渠道请求头：
+  CN/Intl 聊天及认证重试均生成新的 UUID，三个请求级 ID 保持一致，会话 ID 独立。
+- 流式失败时有界读取并关闭上游错误流，保留业务码和渠道校验提示，不再只返回 HTTP 400。
+- 将业务码 `6004` 或明确的频率限制信封映射为 429，交由 CPA 处理冷却；
+  HTTP 200 中的 JSON 错误信封也不能作为成功回答。
+- 不改模型别名、凭证身份、OAuth、额度查询或现有提示词转换；未自动部署。
 
 ### v0.10.3 - 2026-10-13
 

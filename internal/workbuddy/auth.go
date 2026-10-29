@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/ViceEye/cpa-provider-nexus/internal/pluginrpc"
 )
 
 // buildWorkBuddyHeaders constructs the HTTP headers expected by CodeBuddy/WorkBuddy gateways.
@@ -45,6 +47,12 @@ func buildWorkBuddyHeaders(cred credential, isStream bool) http.Header {
 	h.Set("Content-Type", "application/json")
 	if isStream {
 		h.Set("Accept", "text/event-stream")
+		// Match 9router's CodeBuddy channel identifiers for each chat attempt.
+		requestID := pluginrpc.RandomID()
+		h.Set("X-Request-ID", requestID)
+		h.Set("X-Conversation-ID", pluginrpc.RandomID())
+		h.Set("X-Conversation-Request-ID", requestID)
+		h.Set("X-Conversation-Message-ID", requestID)
 	} else {
 		h.Set("Accept", "application/json")
 	}

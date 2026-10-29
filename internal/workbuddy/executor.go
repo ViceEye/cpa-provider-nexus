@@ -219,14 +219,10 @@ func Execute(raw []byte) ([]byte, error) {
 		}
 	}
 
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		retryable := resp.StatusCode == http.StatusTooManyRequests || resp.StatusCode >= 500
-		message := strings.TrimSpace(string(resp.Body))
-		if message == "" {
-			message = fmt.Sprintf("upstream returned HTTP %d", resp.StatusCode)
-		}
-		observeRequest(authID, req.Model, false, message)
-		return errorEnvelope("upstream_error", message, retryable, resp.StatusCode), nil
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 || isGatewayErrorBody(resp.Body) {
+		upstreamErr := upstreamResponseError(resp.StatusCode, resp.Body)
+		observeRequest(authID, req.Model, false, upstreamErr.Error())
+		return pluginError(upstreamErr), nil
 	}
 
 	// Aggregate SSE chunks into a standard ChatCompletion JSON
@@ -317,12 +313,11 @@ func ExecuteStream(raw []byte) ([]byte, error) {
 		}
 	}
 
-	if streamResp.StatusCode < 200 || streamResp.StatusCode >= 300 {
-		closeHostHTTPStream(streamResp.StreamID)
-		retryable := streamResp.StatusCode == http.StatusTooManyRequests || streamResp.StatusCode >= 500
-		message := fmt.Sprintf("upstream returned HTTP %d", streamResp.StatusCode)
-		observeRequest(authID, req.Model, false, message)
-		return errorEnvelope("upstream_error", message, retryable, streamResp.StatusCode), nil
+	if streamResp.StatusCode < 200 || streamResp.StatusCode >= 300 ||
+		strings.Contains(strings.ToLower(streamResp.Headers.Get("Content-Type")), "application/json") {
+		upstreamErr := upstreamResponseError(streamResp.StatusCode, readStreamErrorBody(streamResp.StreamID))
+		observeRequest(authID, req.Model, false, upstreamErr.Error())
+		return pluginError(upstreamErr), nil
 	}
 
 	// Stream forwarding goroutine

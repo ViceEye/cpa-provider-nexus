@@ -11,7 +11,7 @@ import (
 const (
 	providerID    = "nexus"
 	pluginName    = "cpa-provider-nexus"
-	pluginVersion = "0.10.3"
+	pluginVersion = "0.10.4"
 	defaultRegion = "us-east-1"
 	nexusLogoPath = "/v0/resource/plugins/" + pluginName + "/icon.svg"
 

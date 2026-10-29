@@ -198,6 +198,38 @@ Windows 上打包已提交源码供 Linux 构建时，使用
 
 ## 历史决策与根因记录
 
+### v0.10.4 WorkBuddy 渠道校验适配（2026-10-29）
+
+- 线上 `nexus/deepseek-v4.1-flash` 与 `nexus/wb/deepseek-v4.1-flash`
+  均正确归一化为 `deepseek-v4.1-flash`，但上游返回 HTTP 400、业务码 `11128`，
+  明确提示未通过客户端渠道校验；无工具的最小请求及 V4 Pro 对照同样失败。
+- 参考 `decolua/9router` v0.5.112、提交
+  `1fe586bb1cf35e1ed0cb2150a8ef7d1db040b21d` 的
+  `open-sse/executors/default.js` 中 `codebuddyHeaders`，及
+  `tests/unit/codebuddy-channel-headers.test.js`。当前工作区未找到历史参考副本，
+  最新源码克隆至已忽略的 `temp/9router`，不是运行时依赖。
+- 关键差异不是 UA：上游仍用 `IDE/2.108.1 CodeBuddy/2.108.1`。
+  聊天请求需设置 `X-Request-ID`、`X-Conversation-ID`、
+  `X-Conversation-Request-ID`、`X-Conversation-Message-ID`；其中请求 ID、
+  会话请求 ID、会话消息 ID 相同，会话 ID 独立。每个上游尝试生成新 UUID，
+  包括刷新认证后的重试；额度请求不添加聊天标识。
+- 流式非 2xx 不再立即丢弃错误响应：经宿主桥有界读取错误正文并关闭流，
+  向客户端保留业务码及 `displayTips`。错误正文最多读取 64 KiB / 64 块，
+  非结构化正文不原样复制，避免泄露异常页面内容。
+- 同步 9router 对 `6004` / 明确频率限制文本的 429 映射，由 CPA 处理冷却。
+  `11128` 继续保留 400、不可重试，插件不复制 9router 的全局账号退避调度器，
+  也不自行反复刷新凭证或无限重试。JSON 错误即使位于 HTTP 200 中也不能算成功。
+- 已用同一服务器、同一 WorkBuddy Intl 账号，经现有 CPA 管理 HTTP 桥添加这组
+  请求头验证：`deepseek-v4.1-flash` 返回 HTTP 200、模型名一致、`finish_reason:
+  stop` 和 `[DONE]`。这是新请求策略的真实验证，未替换线上插件，不能等同于
+  新 `.so` 已部署后的完整链路验证。管理桥不能用 `$TOKEN$` 解析该 Nexus 凭证，
+  探针只在服务器内存中读取令牌，不打印或持久化凭据。
+- 本地 Go 1.26.10 Docker 环境的 `go vet ./...`、`go test -count=1 ./...`、
+  WorkBuddy `go test -race -count=1` 均通过；项目 Dockerfile 额外执行完整测试并
+  产出 `dist/linux/amd64/cpa-provider-nexus-v0.10.4.so`。生产服务器是 ARM64，
+  此 AMD64 产物不得直接安装到生产容器，部署前需另建 ARM64 产物。
+- 未自动推送、发布或部署。
+
 ### v0.10.3 Claude Quota 唤醒部署（2026-10-13）
 
 - 功能提交 `fdd5e8898ced76c67f07d2f0c62db826d772cefc` 已推送至 `main`。

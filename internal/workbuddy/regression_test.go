@@ -45,6 +45,7 @@ func TestCredentialRegionAndRefreshStorage(t *testing.T) {
 
 func TestExecuteRefreshSavesOriginalFile(t *testing.T) {
 	var calls, saves int
+	var previousRequestID string
 	pluginrpc.SetCaller(func(method string, payload any) (json.RawMessage, error) {
 		switch method {
 		case "host.http.do":
@@ -56,8 +57,13 @@ func TestExecuteRefreshSavesOriginalFile(t *testing.T) {
 				return testJSON(hostHTTPResponse{StatusCode: 200, Body: []byte(`{"code":0,"data":{"accessToken":"new-access","refreshToken":"new-refresh","expiresIn":3600}}`)}), nil
 			}
 			calls++
+			checkChannelHeaders(t, req.Headers)
 			if calls == 1 {
+				previousRequestID = req.Headers.Get("X-Request-ID")
 				return testJSON(hostHTTPResponse{StatusCode: 401}), nil
+			}
+			if previousRequestID == req.Headers.Get("X-Request-ID") {
+				t.Fatal("retry reused channel identifiers")
 			}
 			if req.Headers.Get("Authorization") != "Bearer new-access" {
 				t.Fatal("retry did not use refreshed token")
